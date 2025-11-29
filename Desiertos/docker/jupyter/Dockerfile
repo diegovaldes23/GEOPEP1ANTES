@@ -12,21 +12,21 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Configurar GDAL
+# Configurar GDAL / PROJ
 ENV GDAL_CONFIG=/usr/bin/gdal-config
 ENV PROJ_LIB=/usr/share/proj
 
 USER $NB_UID
 
 # Copiar requirements
-COPY requirements.txt /tmp/
+COPY requirements.txt /tmp/requirements.txt
 
-# Instalar librerías Python
-RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
+# Instalar librerías Python (geopandas + lo que ya usas + streamlit)
+RUN pip install --no-cache-dir -r /tmp/requirements.txt streamlit && \
     fix-permissions "${CONDA_DIR}" && \
     fix-permissions "/home/${NB_USER}"
 
-# Instalar extensiones de JupyterLab
+# Extensiones de JupyterLab (opcional, puedes dejarlas tal cual)
 RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager \
     jupyterlab-plotly \
     @jupyterlab/geojson-extension

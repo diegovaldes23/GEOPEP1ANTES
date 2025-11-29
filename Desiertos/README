@@ -1,0 +1,31 @@
+🚀 Ejecución rápida del proyecto
+1. Apagar contenedores
+docker compose down
+
+2. Reconstruir imágenes (si cambió Dockerfile o requirements)
+docker compose build --no-cache
+
+3. Levantar todos los servicios
+docker compose up -d
+
+📌 Acceso a las herramientas
+🔷 Streamlit (aplicación web del proyecto)
+
+Abrir en el navegador:
+
+http://localhost:8501
+
+🔷 Jupyter Lab (ejecución de notebooks)
+
+Abrir en el navegador:
+
+http://localhost:8888
+
+
+Te pedirá el token definido en .env (por ejemplo pep1).
+
+🔷 Ver logs del servicio Streamlit (si hay errores)
+docker logs streamlit_pep
+
+🔷 Ver contenedores activos
+docker ps
