@@ -1,10 +1,13 @@
 import textwrap
 from pathlib import Path
 
+import folium
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from folium import plugins
+from streamlit_folium import st_folium
 import streamlit as st
 
 
@@ -43,17 +46,52 @@ def cargar_catalogo() -> pd.DataFrame:
 
 @st.cache_data
 def cargar_indicadores() -> pd.DataFrame:
-    return pd.read_csv(INDICADORES_PATH)
+    if INDICADORES_PATH.exists():
+        return pd.read_csv(INDICADORES_PATH)
+    return pd.DataFrame()
 
 
 @st.cache_data
 def cargar_accesibilidad() -> pd.DataFrame:
-    return pd.read_csv(ACCESIBILIDAD_PATH)
+    if ACCESIBILIDAD_PATH.exists():
+        return pd.read_csv(ACCESIBILIDAD_PATH)
+    return pd.DataFrame()
 
 
 @st.cache_data
 def cargar_desiertos() -> pd.DataFrame:
-    return pd.read_csv(DESIERTOS_PATH)
+    if DESIERTOS_PATH.exists():
+        return pd.read_csv(DESIERTOS_PATH)
+    return pd.DataFrame()
+
+
+@st.cache_data
+def cargar_capas_puntos() -> dict[str, gpd.GeoDataFrame]:
+    """
+    Carga todas las capas de puntos desde el GeoPackage.
+
+    Returns
+    -------
+    dict[str, gpd.GeoDataFrame]
+        Diccionario con nombre de capa como clave y GeoDataFrame como valor.
+    """
+    capas_puntos = [
+        "companias_bomberos",
+        "cuarteles_carabineros",
+        "establecimientos_educacion",
+        "establecimientos_educacion_superior",
+        "establecimientos_salud",
+        "infraestructura_deportiva",
+        "municipios",
+        "paradas_metro_tren",
+    ]
+    capas = {}
+    for capa in capas_puntos:
+        try:
+            capas[capa] = cargar_geodataframe(capa)
+        except Exception as e:
+            st.warning(f"No se pudo cargar la capa {capa}: {e}")
+    return capas
 
 
 # ----------------------------------------------------------------------
@@ -71,7 +109,13 @@ st.set_page_config(
 st.sidebar.title("PEP1 – Desiertos de servicios")
 seccion = st.sidebar.radio(
     "Secciones",
-    ["Introducción y datos", "Oferta de servicios", "Accesibilidad", "Desiertos de servicio"],
+    [
+        "Introducción y datos",
+        "Oferta de servicios",
+        "Accesibilidad",
+        "Desiertos de servicio",
+        "Mapa Interactivo de Puntos",
+    ],
 )
 
 
@@ -153,6 +197,15 @@ elif seccion == "Oferta de servicios":
     indicadores = cargar_indicadores()
     comunas = cargar_geodataframe(LAYER_COMUNAS)
 
+    if indicadores.empty:
+        st.warning(
+            "No se encontraron datos de indicadores. Ejecute los notebooks para generar los datos procesados."
+        )
+        st.info(
+            "Ejecuta los notebooks en orden: 01_data_acquisition.ipynb → 02_exploratory_analysis.ipynb → 03_geostatistics.ipynb → 04_machine_learning.ipynb → 05_results_synthesis.ipynb"
+        )
+        st.stop()
+
     # Servicios que tienen tasas por 10k habitantes
     servicios_disponibles = {
         "Establecimientos de salud": "tasa_establecimientos_salud_x10k",
@@ -223,6 +276,15 @@ elif seccion == "Accesibilidad":
 
     accesibilidad = cargar_accesibilidad()
     comunas = cargar_geodataframe(LAYER_COMUNAS)
+
+    if accesibilidad.empty:
+        st.warning(
+            "No se encontraron datos de accesibilidad. Ejecute los notebooks para generar los datos procesados."
+        )
+        st.info(
+            "Ejecuta los notebooks en orden: 01_data_acquisition.ipynb → 02_exploratory_analysis.ipynb → 03_geostatistics.ipynb → 04_machine_learning.ipynb → 05_results_synthesis.ipynb"
+        )
+        st.stop()
 
     st.markdown(
         """
@@ -332,6 +394,15 @@ elif seccion == "Desiertos de servicio":
     desiertos = cargar_desiertos()
     comunas = cargar_geodataframe(LAYER_COMUNAS)
 
+    if desiertos.empty:
+        st.warning(
+            "No se encontraron datos de desiertos de servicio. Ejecute los notebooks para generar los datos procesados."
+        )
+        st.info(
+            "Ejecuta los notebooks en orden: 01_data_acquisition.ipynb → 02_exploratory_analysis.ipynb → 03_geostatistics.ipynb → 04_machine_learning.ipynb → 05_results_synthesis.ipynb"
+        )
+        st.stop()
+
     st.markdown(
         """
         A partir de los indicadores de oferta y accesibilidad se construyó, 
@@ -383,7 +454,9 @@ elif seccion == "Desiertos de servicio":
             linewidth=0.3,
         )
         ax.set_axis_off()
-        ax.set_title("Número de servicios en condición de desierto por comuna", fontsize=12)
+        ax.set_title(
+            "Número de servicios en condición de desierto por comuna", fontsize=12
+        )
         st.pyplot(fig)
 
         # Si existen banderas específicas por servicio, las mostramos
@@ -400,3 +473,57 @@ elif seccion == "Desiertos de servicio":
                     + banderas
                 ].sort_values("n_servicios_en_desierto", ascending=False)
             )
+
+
+# ----------------------------------------------------------------------
+# Sección 5: Mapa Interactivo de Puntos
+# ----------------------------------------------------------------------
+elif seccion == "Mapa Interactivo de Puntos":
+    st.title("Mapa Interactivo de Puntos de Servicios")
+
+    capas_puntos = cargar_capas_puntos()
+
+    if not capas_puntos:
+        st.warning("No se pudieron cargar las capas de puntos.")
+        st.stop()
+
+    # Crear mapa Folium centrado en RM (aprox. Santiago)
+    m = folium.Map(location=[-33.45, -70.65], zoom_start=10)
+
+    # Colores para cada capa
+    colores = {
+        "companias_bomberos": "red",
+        "cuarteles_carabineros": "blue",
+        "establecimientos_educacion": "green",
+        "establecimientos_educacion_superior": "purple",
+        "establecimientos_salud": "orange",
+        "infraestructura_deportiva": "pink",
+        "municipios": "black",
+        "paradas_metro_tren": "gray",
+        "paradas_micro": "brown",
+    }
+
+    # Agregar capas al mapa
+    for nombre_capa, gdf in capas_puntos.items():
+        if gdf.empty:
+            continue
+        color = colores.get(nombre_capa, "blue")
+        # Convertir a WGS84 para Folium
+        gdf_wgs84 = gdf.to_crs("EPSG:4326")
+        # Filtrar geometrías vacías
+        gdf_wgs84 = gdf_wgs84[~gdf_wgs84.geometry.is_empty]
+        for _, row in gdf_wgs84.iterrows():
+            folium.CircleMarker(
+                location=[row.geometry.y, row.geometry.x],
+                radius=3,
+                color=color,
+                fill=True,
+                fill_color=color,
+                popup=nombre_capa,
+            ).add_to(m)
+
+    # Agregar plugin de pantalla completa
+    plugins.Fullscreen().add_to(m)
+
+    # Mostrar mapa en Streamlit
+    st_folium(m, width=700, height=500)
